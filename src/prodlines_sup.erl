@@ -8,6 +8,8 @@
 
 -behaviour(supervisor).
 
+-define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, 
+[I]}).
 %% External exports
 -export([start_link/0, upgrade/0]).
 
@@ -53,5 +55,6 @@ init([]) ->
     Web = {webmachine_mochiweb,
            {webmachine_mochiweb, start, [WebConfig]},
            permanent, 5000, worker, dynamic},
-    Processes = [Web],
+    ProdlinesServer = ?CHILD(prodlines_server, worker),
+    Processes = [Web,ProdlinesServer],
     {ok, { {one_for_one, 10, 10}, Processes} }.
