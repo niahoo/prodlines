@@ -12,7 +12,7 @@
 -include("task.hrl").
 
 %% API
--export([start_link/1, enqueue/2, get_list/2]).
+-export([start_link/1, enqueue/2, get_list/1,finished_signal/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -36,8 +36,11 @@ enqueue(PID, Task) ->
 	error -> error
     end.
 
-get_list(_,_) ->
+get_list(_) ->
     ok.
+finished_signal(PID, ID) ->
+    gen_server:cast(PID, {finished, ID}).
+    
 
 %%====================================================================
 %% gen_server callbacks
@@ -70,7 +73,7 @@ handle_call({enqueue, Task}, _From, State) ->
     NewQueue = lists:append(State#state.tasks, [{NewId, Task}]),
     NewState = State#state{tasks=NewQueue,taskLastId=NewId},
     Reply = {reply, ok, NewState},
-    check_for_launch(Reply, NewState)
+    check_for_launch(Reply)
 	;
 
 handle_call(_Request, _From, State) ->
@@ -83,6 +86,26 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+handle_cast({finished, _ID}, #state{tasks=Tasks}=State) when Tasks == [] ->
+    {noreply, State};
+handle_cast({finished, ID}, State) ->
+    Tasks = State#state.tasks,
+    [{CheckID, Task}|Tail] = Tasks,
+    Reply = 
+	case CheckID == ID of 
+	    true -> spawn(fun() -> notify_finished(Task, State) end),
+		    {noreply, State#state{idle=true, tasks=Tail}} ;
+	    false -> 
+		io:format("Unexpected finished task ~p~n", [ID]),
+		%% notify_finished(Task, State) %% Comportement anormal
+		{noreply, State#state{idle=true}}
+	end,
+    check_for_launch(Reply)
+	;
+
+
+    
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -115,5 +138,30 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-check_for_launch(PreviousReply, State) ->
-    case State#state.idle of
+check_for_launch({reply, Reply, State}) ->
+    {reply, Reply, launch(State)};
+	    
+check_for_launch({noreply, State}) ->
+    {noreply, launch(State)}.
+
+launch(State) ->
+    case State#state.idle of 
+	false -> State ;
+	true -> 
+	    case State#state.tasks of
+		[{ID,Task}|_T] ->
+		    timer:apply_after(Task#task.duration, ?MODULE, finished_signal, [self(),ID]),
+		    State#state{idle=false} ;
+		[] ->
+		    io:format("No more tasks in queue~n"),
+		    State
+	    end
+    end.
+
+%% @todo définir la fonction. si la task à une callback_fun, la lancer, 
+%% sinon si elle a une callback url définie, l'appeler avec un set
+%% d'arguments prédéfinis
+%% sinon si la state.props.default_callback_url est définie, l'appeler
+%% avec ce même set
+notify_finished(Task, _State) ->
+    io:format("Task is finished ~p~n", [Task]).
