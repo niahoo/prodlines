@@ -1,0 +1,2 @@
+127.0.0.1 - - [02/May/2011:12:03:59 +0200] "GET / HTTP/1.1" 200 42 "" "Opera/9.80 (X11; Linux i686; U; fr) Presto/2.8.131 Version/11.10"
+127.0.0.1 - - [02/May/2011:12:03:59 +0200] "GET /favicon.ico HTTP/1.1" 404 193 "http://localhost:8000/" "Opera/9.80 (X11; Linux i686; U; fr) Presto/2.8.131 Version/11.10"

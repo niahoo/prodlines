@@ -1,0 +1,9 @@
+{application,prodlines,
+             [{description,"prodlines"},
+              {vsn,"1"},
+              {modules,[prodlines,prodlines_app,prodlines_resource,
+                        prodlines_sup]},
+              {registered,[]},
+              {applications,[kernel,stdlib,inets,crypto,mochiweb,webmachine]},
+              {mod,{prodlines_app,[]}},
+              {env,[]}]}.
