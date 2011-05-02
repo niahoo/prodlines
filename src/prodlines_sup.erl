@@ -55,6 +55,7 @@ init([]) ->
     Web = {webmachine_mochiweb,
            {webmachine_mochiweb, start, [WebConfig]},
            permanent, 5000, worker, dynamic},
+   
     ProdlinesServer = ?CHILD(prodlines_server, worker),
     Processes = [Web,ProdlinesServer],
     {ok, { {one_for_one, 10, 10}, Processes} }.

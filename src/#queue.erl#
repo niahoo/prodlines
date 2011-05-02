@@ -1,22 +1,24 @@
 %%%-------------------------------------------------------------------
-%%% File    : prodlines_server.erl
+%%% File    : queue.erl
 %%% Author  : Ludovic <ludovic@meelux>
 %%% Description : 
 %%%
 %%% Created :  2 May 2011 by Ludovic <ludovic@meelux>
 %%%-------------------------------------------------------------------
--module(prodlines_server).
+-module(queue).
 
 -behaviour(gen_server).
--define(SERVER, ?MODULE).
+
+-include("task.hrl").
+
 %% API
--export([start_link/0,create_queue/2,delete_queue/1,queue_exists/1,queue_pid/1]).
+-export([start_link/1, enqueue/2, get_list/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {queues}).
+-record(state, {idle, name, props, tasks, taskLastId=0}).
 
 %%====================================================================
 %% API
@@ -25,16 +27,18 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-create_queue(Name, Props) ->
-    gen_server:call(?SERVER, {create, Name, Props}).
-delete_queue(Name) ->
-    gen_server:call(?SERVER, {delete, Name}).
-queue_exists(Name) ->
-    gen_server:call(?SERVER, {exists, Name}).
-queue_pid(Name) ->
-    gen_server:call(?SERVER, {getpid, Name}).
+start_link({Name, Props}) ->
+    gen_server:start_link(?MODULE, [{Name, Props}], []).
+
+enqueue(PID, Task) ->
+    case task_utils:validate(Task) of
+	ok -> gen_server:call(PID, {enqueue, Task});
+	error -> error
+    end.
+
+get_list(_,_) ->
+    ok.
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -46,9 +50,10 @@ queue_pid(Name) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([]) ->
-    Queues = ets:new(queues, [set,private]),
-    {ok, #state{queues=Queues}}.
+init([{Name, Props}]) ->
+    io:format("New queue started, name is ~p~n"
+	      "Props are ~p~n~n", [Name,Props]),
+    {ok, #state{idle=true,name=Name,props=Props,tasks=[]}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -59,42 +64,15 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({create, Name, Props}, _From, State) ->
-    Exists = case ets:lookup(State#state.queues, Name) of
-		[] -> false ;
-		[_] -> true
-	    end,
-    case Exists of
-	true -> {reply, exists, State} ;
-	false ->
-	    {ok, NewQueue} = queue:start_link({Name, Props}),
-	    Reply = 
-		case ets:insert_new(State#state.queues, {Name, NewQueue}) of
-		    true -> ok ;
-		    false -> exists
-		end,
-	    {reply, Reply, State}
-    end
+
+handle_call({enqueue, Task}, _From, State) ->
+    NewId = State#state.taskLastId + 1,
+    NewQueue = lists:append(State#state.tasks, [{NewId, Task}]),
+    NewState = State#state{tasks=NewQueue,taskLastId=NewId},
+    Reply = {reply, ok, NewState},
+    check_for_launch(Reply, NewState)
 	;
 
-handle_call({delete, Name}, _From, State) ->
-    ok
-	;
-handle_call({exists, Name}, _From, State) ->
-    Reply = case ets:lookup(State#state.queues, Name) of
-		[] -> false ;
-		[_] -> true
-	    end,
-    {reply, Reply, State}
-	;
-handle_call({getpid, Name}, _From, State) ->
-    Reply = case ets:lookup(State#state.queues, Name) of
-		[{Name, PID}] -> PID;
-		_ -> doesnt_exists
-	    end,
-    {reply, Reply, State}
-	;
-		
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -137,4 +115,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
- 
+check_for_launch(PreviousReply, State) ->
+    case State#state.idle of 
+	false -> PreviousReply ;
+	true ->
+	    
